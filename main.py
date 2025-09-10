@@ -26,7 +26,7 @@ BTN_USED = (205, 210, 215)
 PANEL = (255, 255, 255)
 BORDER = (230, 235, 240)
 
-MAX_MISTAKES = 5
+MAX_MISTAKES = 6
 ROUND_TIME = 90
 
 # базовые максимальные размеры шрифтов — будут умножаться на ui_scale
