@@ -4,6 +4,7 @@
 - async-цикл (await asyncio.sleep(0) в WEB)
 - респонсивный лейаут: портрет/альбом
 - увеличенные тач-зоны и адаптивные размеры
+- В ПОРТРЕТЕ кнопки закреплены у низа, клавиатура над ними
 """
 
 import sys
@@ -12,7 +13,7 @@ import traceback
 import pygame
 
 # --------- НАСТРОЙКИ ----------
-BASE_W, BASE_H = 960, 540      # базовая «макетка» для скейлинга
+BASE_W, BASE_H = 960, 540
 FPS = 60
 
 BG_COLOR = (245, 247, 250)
@@ -29,12 +30,9 @@ BORDER = (230, 235, 240)
 MAX_MISTAKES = 6
 ROUND_TIME = 90
 
-# базовые максимальные размеры шрифтов — умножаются на ui_scale
 MAX_XL, MAX_L, MAX_M, MAX_S = 44, 32, 24, 18
 
-# важное: относительный путь (pygbag упакует assets/)
 FONT_PATH = "assets/fonts/NotoSans-Regular.ttf"
-
 WEB = (sys.platform == "emscripten")
 
 KEYBOARD_ROWS = [
@@ -93,13 +91,12 @@ def ellipsize(text, font, max_width):
 def draw_text(surface, text, font, color, pos, center=False):
     img = font.render(text, True, color)
     rect = img.get_rect()
-    if center: rect.center = pos
-    else: rect.topleft = pos
+    rect.center = pos if center else rect.move(pos[0], pos[1]).topleft
+    if not center: rect.topleft = pos
     surface.blit(img, rect)
     return rect
 
 def build_keyboard(area_rect, ui_s=1.0):
-    # крупные клавиши и интервалы для тача
     padding = int(10 * ui_s)
     rows = len(KEYBOARD_ROWS)
     btn_h = max(int(40 * ui_s), (area_rect.height - (rows + 1) * (padding + 2)) // rows)
@@ -111,7 +108,7 @@ def build_keyboard(area_rect, ui_s=1.0):
         x = area_rect.left + padding
         for ch in row:
             rect = pygame.Rect(x, y, btn_w, btn_h)
-            hit_rect = rect.inflate(int(6 * ui_s), int(6 * ui_s))  # расширенная тач-зона
+            hit_rect = rect.inflate(int(6 * ui_s), int(6 * ui_s))
             buttons.append((ch, rect, hit_rect))
             x += btn_w + padding
         y += btn_h + padding
@@ -158,55 +155,72 @@ def draw_gallows(surface, base_x, base_y, mistakes, ui_s=1.0):
     if mistakes > 5: pygame.draw.line(surface, BAD, (cx, cy + int(95*ui_s)), (cx + int(25*ui_s), cy + int(130*ui_s)), max(1, int(3*ui_s)))
 
 def compute_layout(w, h, ui_s=1.0):
-    """Респонсивная раскладка:
-       - альбом: левый (виселица) + правый (игра)
-       - портрет: верх (виселица) + низ (игра)
-       Нижние кнопки занимают всю ширину и делят её адаптивно.
+    """В портрете: кнопки внизу, клавиатура над ними.
+       В альбоме: кнопки над клавиатурой.
     """
     margin = int(16 * ui_s)
     border = int(16 * ui_s)
+    gap = int(10 * ui_s)
+    side_pad = int(16 * ui_s)
 
     portrait = h >= w
 
     if not portrait:
-        # альбом
+        # альбом: классическое деление
         left_w = max(int(360 * ui_s), int(w * 0.42))
         left = pygame.Rect(margin, margin, left_w - margin, h - 2*margin)
         right = pygame.Rect(left.right + margin, margin, w - (left.width + 3*margin), h - 2*margin)
+
+        # клавиатура внизу правой панели
         kb_h_frac = 0.36 if h >= 560 else 0.42
         kb_area = pygame.Rect(right.left + border, right.top + int(h * 0.36),
                               right.width - 2*border, int(h * kb_h_frac))
+
+        # кнопки над клавиатурой
+        btn_h = max(int(44 * ui_s), 40)
+        yb = kb_area.top - (btn_h + gap)
+
+        available_w = right.width - 2*side_pad - 2*gap
+        btn_w_hint  = max(int(120 * ui_s), int(available_w * 0.34))
+        btn_w_again = max(int(120 * ui_s), int(available_w * 0.34))
+        btn_w_eyo   = max(int(100 * ui_s), available_w - btn_w_hint - btn_w_again)
+
+        x = right.left + side_pad
+        btn_hint  = pygame.Rect(x, yb, btn_w_hint, btn_h)
+        x = btn_hint.right + gap
+        btn_again = pygame.Rect(x, yb, btn_w_again, btn_h)
+        x = btn_again.right + gap
+        btn_eyo   = pygame.Rect(x, yb, btn_w_eyo, btn_h)
+
     else:
-        # портрет
+        # портрет: верх/низ, кнопки у низа
         top_h = int(h * 0.46)
         left = pygame.Rect(margin, margin, w - 2*margin, top_h - margin)
         right = pygame.Rect(margin, left.bottom + margin, w - 2*margin, h - (left.height + 3*margin))
-        kb_h = max(int(right.height * 0.48), int(220 * ui_s))
-        kb_area = pygame.Rect(right.left + border,
-                              right.bottom - kb_h - border,
-                              right.width - 2*border,
-                              kb_h)
 
-    # --- нижние кнопки: адаптивно по ширине ---
-    btn_h = max(int(44 * ui_s), 40)
-    yb = kb_area.top - (btn_h + int(10 * ui_s))
-    gap = int(10 * ui_s)
-    side_pad = int(16 * ui_s)
-    available_w = right.width - 2*side_pad - 2*gap
+        btn_h = max(int(48 * ui_s), 44)  # чуть выше для тача
+        yb = right.bottom - btn_h - side_pad
 
-    # две большие + одна поменьше, но всё влезает
-    btn_w_hint  = max(int(120 * ui_s), int(available_w * 0.34))
-    btn_w_again = max(int(120 * ui_s), int(available_w * 0.34))
-    btn_w_eyo   = max(int(100 * ui_s), available_w - btn_w_hint - btn_w_again)
+        available_w = right.width - 2*side_pad - 2*gap
+        btn_w_hint  = max(int(120 * ui_s), int(available_w * 0.34))
+        btn_w_again = max(int(120 * ui_s), int(available_w * 0.34))
+        btn_w_eyo   = max(int(100 * ui_s), available_w - btn_w_hint - btn_w_again)
 
-    x = right.left + side_pad
-    btn_hint  = pygame.Rect(x, yb, btn_w_hint, btn_h)
-    x = btn_hint.right + gap
-    btn_again = pygame.Rect(x, yb, btn_w_again, btn_h)
-    x = btn_again.right + gap
-    btn_eyo   = pygame.Rect(x, yb, btn_w_eyo, btn_h)
+        x = right.left + side_pad
+        btn_hint  = pygame.Rect(x, yb, btn_w_hint, btn_h)
+        x = btn_hint.right + gap
+        btn_again = pygame.Rect(x, yb, btn_w_again, btn_h)
+        x = btn_again.right + gap
+        btn_eyo   = pygame.Rect(x, yb, btn_w_eyo, btn_h)
 
-    # кнопка "Сменить категорию" — выше слова
+        # клавиатура ДОЛЖНА быть над кнопками и вписываться
+        kb_bottom = btn_hint.top - gap
+        kb_h = max(int(right.height * 0.44), int(220 * ui_s))
+        kb_top = max(right.top + border, kb_bottom - kb_h)
+        kb_area = pygame.Rect(right.left + border, kb_top,
+                              right.width - 2*border, kb_bottom - kb_top)
+
+    # кнопка категории (над словом)
     btn_cat = pygame.Rect(right.left + side_pad, right.top + int(170 * ui_s),
                           max(int(220 * ui_s), int(right.width * 0.4)),
                           max(int(40 * ui_s), 36))
@@ -371,10 +385,12 @@ async def run_game():
         cat_text = ellipsize(cat_full, font_cat, cat_area_w)
         draw_text(screen, cat_text, font_cat, MUTED, (right.left + int(16 * ui_s), right.top + int(16 * ui_s)))
 
+        # кнопка категории
         pygame.draw.rect(screen, BTN_BG, btn_cat, border_radius=max(8, int(10 * ui_s)))
         pygame.draw.rect(screen, BORDER, btn_cat, max(1, int(1 * ui_s)), border_radius=max(8, int(10 * ui_s)))
         draw_btn(screen, btn_cat, "Сменить категорию", INK, 18, ui_s)
 
+        # слово
         disp = []
         for ch in state["word"]:
             show = (ch in state["guessed"]) or (state["eyo_equiv"] and ch in {'Е','Ё'} and (('Е' in state["guessed"]) or ('Ё' in state["guessed"])))
@@ -390,6 +406,7 @@ async def run_game():
         draw_text(screen, ellipsize(hint_line, hint_font, cat_area_w), hint_font, MUTED,
                   (right.left + int(16 * ui_s), right.top + int(210 * ui_s)))
 
+        # клавиатура
         for ch, rect, _hit in buttons:
             used = ch in state["used"]
             bg = BTN_USED if used else BTN_BG
@@ -399,11 +416,13 @@ async def run_game():
             key_font = fit_font(ch, rect.width - int(8 * ui_s), int(MAX_M * ui_s), max(14, int(14 * ui_s)))
             draw_text(screen, ch, key_font, MUTED if used else INK, rect.center, center=True)
 
+        # нижние кнопки
         draw_btn(screen, btn_hint,  "Подсказка (-1 жизнь)", ACCENT, 22, ui_s)
         draw_btn(screen, btn_again, "Сыграть ещё",          ACCENT, 22, ui_s)
         draw_btn(screen, btn_eyo,   f"Е=Ё: {'ВКЛ' if state['eyo_equiv'] else 'ВЫКЛ'}",
                  GOOD if state['eyo_equiv'] else MUTED, 22, ui_s)
 
+        # оверлей конца игры
         if state["won"] or state["lost"]:
             overlay_w = right.width - int(32 * ui_s)
             overlay_h = max(int(120 * ui_s), 100)
