@@ -26,10 +26,10 @@ BTN_USED = (205, 210, 215)
 PANEL = (255, 255, 255)
 BORDER = (230, 235, 240)
 
-MAX_MISTAKES = 5
+MAX_MISTAKES = 6
 ROUND_TIME = 90
 
-# базовые максимальные размеры шрифтов — будут умножаться на ui_scale
+# базовые максимальные размеры шрифтов — умножаются на ui_scale
 MAX_XL, MAX_L, MAX_M, MAX_S = 44, 32, 24, 18
 
 # важное: относительный путь (pygbag упакует assets/)
@@ -56,7 +56,6 @@ CATEGORIES = list(WORDS_BY_CATEGORY.keys())
 
 # --------- ХЕЛПЕРЫ ----------
 def ui_scale_for(w, h):
-    # мягкий скейл с нижней границей, чтобы на очень маленьких экранах не «ломалось»
     s = min(w / BASE_W, h / BASE_H)
     return max(0.6, min(1.5, s))
 
@@ -94,14 +93,13 @@ def ellipsize(text, font, max_width):
 def draw_text(surface, text, font, color, pos, center=False):
     img = font.render(text, True, color)
     rect = img.get_rect()
-    rect.center = pos if center else rect.move(pos[0], pos[1]).topleft
-    if not center:
-        rect.topleft = pos
+    if center: rect.center = pos
+    else: rect.topleft = pos
     surface.blit(img, rect)
     return rect
 
 def build_keyboard(area_rect, ui_s=1.0):
-    # более крупные клавиши и интервалы на мобильном
+    # крупные клавиши и интервалы для тача
     padding = int(10 * ui_s)
     rows = len(KEYBOARD_ROWS)
     btn_h = max(int(40 * ui_s), (area_rect.height - (rows + 1) * (padding + 2)) // rows)
@@ -113,8 +111,7 @@ def build_keyboard(area_rect, ui_s=1.0):
         x = area_rect.left + padding
         for ch in row:
             rect = pygame.Rect(x, y, btn_w, btn_h)
-            # увеличим реальную тач-зону при проверке клика
-            hit_rect = rect.inflate(int(6 * ui_s), int(6 * ui_s))
+            hit_rect = rect.inflate(int(6 * ui_s), int(6 * ui_s))  # расширенная тач-зона
             buttons.append((ch, rect, hit_rect))
             x += btn_w + padding
         y += btn_h + padding
@@ -164,6 +161,7 @@ def compute_layout(w, h, ui_s=1.0):
     """Респонсивная раскладка:
        - альбом: левый (виселица) + правый (игра)
        - портрет: верх (виселица) + низ (игра)
+       Нижние кнопки занимают всю ширину и делят её адаптивно.
     """
     margin = int(16 * ui_s)
     border = int(16 * ui_s)
@@ -175,43 +173,48 @@ def compute_layout(w, h, ui_s=1.0):
         left_w = max(int(360 * ui_s), int(w * 0.42))
         left = pygame.Rect(margin, margin, left_w - margin, h - 2*margin)
         right = pygame.Rect(left.right + margin, margin, w - (left.width + 3*margin), h - 2*margin)
-        # клавиатура ~ 36% высоты правой панели, на маленьких экранах — больше
         kb_h_frac = 0.36 if h >= 560 else 0.42
         kb_area = pygame.Rect(right.left + border, right.top + int(h * 0.36),
                               right.width - 2*border, int(h * kb_h_frac))
     else:
-        # портрет: всё во всю ширину, делим по вертикали
+        # портрет
         top_h = int(h * 0.46)
-        left = pygame.Rect(margin, margin, w - 2*margin, top_h - margin)   # «левый» как верхняя панель
+        left = pygame.Rect(margin, margin, w - 2*margin, top_h - margin)
         right = pygame.Rect(margin, left.bottom + margin, w - 2*margin, h - (left.height + 3*margin))
-        # на портрете клавиатура должна быть крупнее
         kb_h = max(int(right.height * 0.48), int(220 * ui_s))
         kb_area = pygame.Rect(right.left + border,
                               right.bottom - kb_h - border,
                               right.width - 2*border,
                               kb_h)
 
-    # нижние кнопки
+    # --- нижние кнопки: адаптивно по ширине ---
     btn_h = max(int(44 * ui_s), 40)
     yb = kb_area.top - (btn_h + int(10 * ui_s))
-    btn_w_hint = max(int(220 * ui_s), int(right.width * 0.35))
-    btn_w_again = max(int(180 * ui_s), int(right.width * 0.28))
-    btn_w_eyo = max(int(160 * ui_s), int(right.width * 0.22))
+    gap = int(10 * ui_s)
+    side_pad = int(16 * ui_s)
+    available_w = right.width - 2*side_pad - 2*gap
 
-    x = right.left + int(16 * ui_s)
-    btn_hint = pygame.Rect(x, yb, btn_w_hint, btn_h)
-    x = btn_hint.right + int(10 * ui_s)
+    # две большие + одна поменьше, но всё влезает
+    btn_w_hint  = max(int(120 * ui_s), int(available_w * 0.34))
+    btn_w_again = max(int(120 * ui_s), int(available_w * 0.34))
+    btn_w_eyo   = max(int(100 * ui_s), available_w - btn_w_hint - btn_w_again)
+
+    x = right.left + side_pad
+    btn_hint  = pygame.Rect(x, yb, btn_w_hint, btn_h)
+    x = btn_hint.right + gap
     btn_again = pygame.Rect(x, yb, btn_w_again, btn_h)
-    x = btn_again.right + int(10 * ui_s)
-    btn_eyo = pygame.Rect(x, yb, btn_w_eyo, btn_h)
+    x = btn_again.right + gap
+    btn_eyo   = pygame.Rect(x, yb, btn_w_eyo, btn_h)
 
-    # кнопка категории (выше слова)
-    btn_cat = pygame.Rect(right.left + int(16 * ui_s), right.top + int(170 * ui_s), max(int(260 * ui_s), int(right.width * 0.4)), max(int(40 * ui_s), 36))
+    # кнопка "Сменить категорию" — выше слова
+    btn_cat = pygame.Rect(right.left + side_pad, right.top + int(170 * ui_s),
+                          max(int(220 * ui_s), int(right.width * 0.4)),
+                          max(int(40 * ui_s), 36))
 
     return left, right, kb_area, btn_hint, btn_again, btn_eyo, btn_cat
 
 def draw_btn(surface, rect, label, bg, max_size=22, ui_s=1.0):
-    f = fit_font(label, rect.width - int(12 * ui_s), int(max_size * ui_s), max(14, int(12 * ui_s)))
+    f = fit_font(label, rect.width - int(12 * ui_s), int(max_size * ui_s), max(12, int(12 * ui_s)))
     pygame.draw.rect(surface, bg, rect, border_radius=max(10, int(10 * ui_s)))
     draw_text(surface, label, f, (255,255,255), rect.center, center=True)
 
@@ -264,7 +267,6 @@ async def run_game():
     cat_idx = 0
     state = new_state(CATEGORIES[cat_idx])
 
-    # вспомогательное: «лениво» отслеживать изменения размера (в том числе в вебе)
     def refresh_layout_if_needed():
         nonlocal w, h, ui_s, left, right, kb_area, btn_hint, btn_again, btn_eyo, btn_cat, buttons
         cur_w, cur_h = pygame.display.get_surface().get_size()
@@ -277,8 +279,6 @@ async def run_game():
     running = True
     while running:
         dt = clock.tick(FPS)
-
-        # обновим лейаут, если окно поменялось (актуально и для смартфона в браузере при смене ориентации)
         refresh_layout_if_needed()
 
         for e in pygame.event.get():
@@ -306,7 +306,6 @@ async def run_game():
                     state["eyo_equiv"] = not state["eyo_equiv"]; continue
 
                 if not (state["won"] or state["lost"]):
-                    # проверяем по расширенной тач-зоне
                     for ch, rect, hit_rect in buttons:
                         if hit_rect.collidepoint(mx, my):
                             if ch not in state["used"]:
@@ -337,22 +336,18 @@ async def run_game():
         # --- РЕНДЕР ---
         screen.fill(BG_COLOR)
 
-        # панели
         br = max(12, int(16 * ui_s))
         pygame.draw.rect(screen, PANEL, left, border_radius=br)
         pygame.draw.rect(screen, BORDER, left, max(1, int(2 * ui_s)), border_radius=br)
         pygame.draw.rect(screen, PANEL, right, border_radius=br)
         pygame.draw.rect(screen, BORDER, right, max(1, int(2 * ui_s)), border_radius=br)
 
-        # заголовок
-        title_font = fit_font("Виселица", left.width - int(32 * ui_s), int(MAX_XL * ui_s), max(18, int(16 * ui_s)))
+        title_font = fit_font("Виселица", left.width - int(32 * ui_s), int(MAX_XL * ui_s), max(16, int(16 * ui_s)))
         draw_text(screen, "Виселица", title_font, INK, (left.left + int(16 * ui_s), left.top + int(12 * ui_s)))
 
-        # виселица
         gallows_base_y = left.top + int(left.height * 0.66)
         draw_gallows(screen, left.left + int(40 * ui_s), gallows_base_y, state["mistakes"], ui_s)
 
-        # статистика
         stat_font = fit_font("Ошибок:", left.width - int(32 * ui_s), int(MAX_L * ui_s), max(14, int(14 * ui_s)))
         draw_text(screen, f"Ошибок: {state['mistakes']} / {MAX_MISTAKES}", stat_font, MUTED,
                   (left.left + int(16 * ui_s), gallows_base_y + int(20 * ui_s)))
@@ -369,19 +364,17 @@ async def run_game():
         draw_text(screen, " ".join(sorted(wrong)) if wrong else "—", wrong_text_f, BAD,
                   (left.left + int(16 * ui_s), gallows_base_y + int(120 * ui_s)))
 
-        # правая панель: категория
+        # правая панель
         cat_area_w = right.width - int(32 * ui_s)
         cat_full = f"Категория: {state['category']}"
         font_cat = fit_font(cat_full, cat_area_w, int(MAX_M * ui_s), max(12, int(12 * ui_s)))
         cat_text = ellipsize(cat_full, font_cat, cat_area_w)
         draw_text(screen, cat_text, font_cat, MUTED, (right.left + int(16 * ui_s), right.top + int(16 * ui_s)))
 
-        # кнопка категории
         pygame.draw.rect(screen, BTN_BG, btn_cat, border_radius=max(8, int(10 * ui_s)))
         pygame.draw.rect(screen, BORDER, btn_cat, max(1, int(1 * ui_s)), border_radius=max(8, int(10 * ui_s)))
         draw_btn(screen, btn_cat, "Сменить категорию", INK, 18, ui_s)
 
-        # слово
         disp = []
         for ch in state["word"]:
             show = (ch in state["guessed"]) or (state["eyo_equiv"] and ch in {'Е','Ё'} and (('Е' in state["guessed"]) or ('Ё' in state["guessed"])))
@@ -394,9 +387,9 @@ async def run_game():
 
         hint_line = "Кликайте по клавишам или печатайте с физической клавиатуры"
         hint_font = fit_font(hint_line, cat_area_w, int(MAX_S * ui_s), max(10, int(12 * ui_s)))
-        draw_text(screen, ellipsize(hint_line, hint_font, cat_area_w), hint_font, MUTED, (right.left + int(16 * ui_s), right.top + int(210 * ui_s)))
+        draw_text(screen, ellipsize(hint_line, hint_font, cat_area_w), hint_font, MUTED,
+                  (right.left + int(16 * ui_s), right.top + int(210 * ui_s)))
 
-        # клавиатура
         for ch, rect, _hit in buttons:
             used = ch in state["used"]
             bg = BTN_USED if used else BTN_BG
@@ -406,13 +399,11 @@ async def run_game():
             key_font = fit_font(ch, rect.width - int(8 * ui_s), int(MAX_M * ui_s), max(14, int(14 * ui_s)))
             draw_text(screen, ch, key_font, MUTED if used else INK, rect.center, center=True)
 
-        # нижние кнопки
-        draw_btn(screen, btn_hint, "Подсказка (-1 жизнь)", ACCENT, 22, ui_s)
-        draw_btn(screen, btn_again, "Сыграть ещё", ACCENT, 22, ui_s)
-        draw_btn(screen, btn_eyo, f"Е=Ё: {'ВКЛ' if state['eyo_equiv'] else 'ВЫКЛ'}",
+        draw_btn(screen, btn_hint,  "Подсказка (-1 жизнь)", ACCENT, 22, ui_s)
+        draw_btn(screen, btn_again, "Сыграть ещё",          ACCENT, 22, ui_s)
+        draw_btn(screen, btn_eyo,   f"Е=Ё: {'ВКЛ' if state['eyo_equiv'] else 'ВЫКЛ'}",
                  GOOD if state['eyo_equiv'] else MUTED, 22, ui_s)
 
-        # оверлей конца игры
         if state["won"] or state["lost"]:
             overlay_w = right.width - int(32 * ui_s)
             overlay_h = max(int(120 * ui_s), 100)
@@ -427,8 +418,6 @@ async def run_game():
                       INK, (right.left + int(30 * ui_s), overlay_y + int(48 * ui_s)))
 
         pygame.display.flip()
-
-        # важный «квант» для браузера
         if WEB:
             await asyncio.sleep(0)
 
